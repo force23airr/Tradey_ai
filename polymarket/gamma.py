@@ -17,6 +17,7 @@ class GammaAPI(PolymarketClient):
         active: bool = None,
         closed: bool = None,
         tag: str = None,
+        tag_id: int = None,
         order: str = "volume24hr",
     ) -> list[dict]:
         """
@@ -28,6 +29,7 @@ class GammaAPI(PolymarketClient):
             active: Filter to active markets only.
             closed: Filter to closed/resolved markets.
             tag:    Filter by tag slug (e.g. 'politics', 'crypto').
+            tag_id: Filter by tag integer ID.
             order:  Sort field — 'volume24hr' | 'startDate' | 'endDate'.
         """
         params = {"limit": limit, "offset": offset, "order": order}
@@ -37,6 +39,8 @@ class GammaAPI(PolymarketClient):
             params["closed"] = str(closed).lower()
         if tag:
             params["tag"] = tag
+        if tag_id is not None:
+            params["tag_id"] = tag_id
         return self.get("/markets", params=params)
 
     def get_market(self, market_id: str) -> dict:

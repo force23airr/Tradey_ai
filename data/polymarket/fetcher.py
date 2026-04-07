@@ -23,42 +23,95 @@ class PolymarketFetcher:
 
     # ── Markets ───────────────────────────────────────────────────────────────
 
-    def fetch_resolved_markets(self, max_markets: int = 1000) -> int:
-        """
-        Paginate through all resolved/closed Polymarket markets and store them.
+    MACRO_KEYWORDS = [
+        # Central banks & monetary policy
+        "federal reserve", "rate cut", "rate hike", "interest rate",
+        "fomc", "fed funds", "quantitative",
+        "bank of japan", "boj", "bank of england", "boe",
+        "european central bank", "ecb", "powell", "lagarde", "ueda",
 
-        Args:
-            max_markets: Cap on how many markets to fetch (for initial runs).
+        # Economic indicators
+        "cpi", "inflation", "pce", "price index",
+        "unemployment", "nonfarm", "payroll", "jobs report",
+        "gdp", "recession", "economic growth",
 
-        Returns:
-            Number of markets inserted/updated.
+        # FX pairs & dollar
+        "usd/jpy", "eur/usd", "gbp/usd", "usdjpy", "eurusd", "gbpusd",
+        "dollar index", "dxy", "japanese yen", "british pound",
+        "forex", "exchange rate",
+
+        # Crypto price thresholds
+        "bitcoin", "btc", "ethereum", "eth",
+
+        # Commodities
+        "crude oil", "oil price", "wti", "brent",
+        "gold price", "gold above", "gold below",
+        "silver price",
+
+        # Rates / bonds
+        "treasury yield", "bond yield", "yield curve",
+        "10-year", "2-year", "t-bill", "10yr",
+
+        # Trade / macro events
+        "tariff", "trade war", "trade deal", "sanctions",
+    ]
+
+    # Noise markets to exclude
+    EXCLUDE_PATTERNS = [
+        "up or down",                    # 5-min crypto noise
+        " vs. ", " vs ",                 # sports matchups
+        "nhl:", "nba:", "nfl:", "mlb:",  # league-prefixed sports
+        "golden knights", "golden state warriors", "golden bears",
+        "oilers", " flames ", " jets ", " rangers ",
+        "arsenal", "chelsea", "liverpool", "manchester",
+        "tottenham", "brentford", "fulham", "everton",
+        "match?", " game ", "season?",
+    ]
+
+    def _is_macro_market(self, question: str) -> bool:
+        """Return True if market is macro/FX/rates (not sports/noise)."""
+        q = question.lower()
+        if any(pat in q for pat in self.EXCLUDE_PATTERNS):
+            return False
+        return any(kw in q for kw in self.MACRO_KEYWORDS)
+
+    def fetch_resolved_markets(self, max_markets: int = 5000) -> int:
         """
-        log.info(f"Fetching resolved markets (max={max_markets})...")
+        Paginate all closed markets sorted by endDate (most recently resolved first).
+        Sorting by endDate instead of volume ensures macro markets aren't buried
+        below thousands of high-volume crypto/sports markets.
+        """
+        log.info(f"Fetching macro/FX/rates markets (max={max_markets})...")
         inserted = 0
         offset   = 0
         limit    = 100
+        scanned  = 0
 
         while inserted < max_markets:
             batch = self.gamma.get_markets(
                 limit=limit,
                 offset=offset,
                 closed=True,
-                order="volume",
+                order="endDateIso",
             )
             if not batch:
                 break
 
             for m in batch:
-                self._upsert_market(m)
-                inserted += 1
+                question = m.get("question") or ""
+                if self._is_macro_market(question):
+                    self._upsert_market(m)
+                    inserted += 1
 
-            log.info(f"  fetched {inserted} markets so far...")
+            scanned += len(batch)
+            if scanned % 1000 == 0:
+                log.info(f"  scanned {scanned}, stored {inserted} macro markets...")
             offset += limit
 
             if len(batch) < limit:
-                break  # last page
+                break
 
-        log.info(f"Done. Total markets stored: {inserted}")
+        log.info(f"Done. Scanned {scanned}, stored {inserted} macro/FX/rates markets.")
         return inserted
 
     def _upsert_market(self, m: dict):

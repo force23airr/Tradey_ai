@@ -23,7 +23,10 @@ class PolymarketClient:
         )
         adapter = HTTPAdapter(max_retries=retry)
         session.mount("https://", adapter)
-        session.headers.update({"Accept": "application/json"})
+        session.headers.update({
+            "Accept": "application/json",
+            "Accept-Encoding": "gzip, deflate",  # disable brotli to avoid decode errors
+        })
         return session
 
     def _throttle(self):
